@@ -1,11 +1,11 @@
 import os
 from app import app, db, login_manager
-from flask import render_template, request, redirect, url_for, flash, session, abort
+from flask import render_template, request, redirect, url_for, flash, session, abort, send_from_directory
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
 from app.models import UserProfile
-from app.forms import LoginForm
+from app.forms import LoginForm, UploadForm
 
 
 ###
@@ -25,17 +25,24 @@ def about():
 
 
 @app.route('/upload', methods=['POST', 'GET'])
+@login_required
 def upload():
     # Instantiate your form class
-    form = LoginForm()
+    form = UploadForm()
     # Validate file upload on submit
     if form.validate_on_submit():
         # Get file data and save to your uploads folder
+        file = form.file.data
+        
+        photofile = secure_filename(file.filename)
+        file.save(os.path.join(
+            app.config['UPLOAD_FOLDER'],photofile
+        ))
 
         flash('File Saved', 'success')
-        return redirect(url_for('home')) # Update this to redirect the user to a route that displays all uploaded image files
-
-    return render_template('upload.html')
+        return redirect(url_for('files')) # Update this to redirect the user to a route that displays all uploaded image files
+    
+    return render_template('upload.html',form = form)
 
 
 @app.route('/login', methods=['POST', 'GET'])
@@ -59,6 +66,8 @@ def login():
         
         if user and check_password_hash(user.password,password):
             login_user(user)
+        else:
+            return flash("Invalid username or password","danger")
             
        
 
@@ -66,9 +75,43 @@ def login():
         #login_user(user)
 
         # Remember to flash a message to the user
-        flash("Login successful")
+        flash("Login successful",'success')
         return redirect(url_for("upload"))  # The user should be redirected to the upload form instead
+    
     return render_template("login.html", form=form)
+
+def get_uploaded_images():
+    upload_path = os.path.join(os.getcwd(), app.config['UPLOAD_FOLDER'])
+    image_list = []
+    
+    
+    for subdir, dirs, files in os.walk(upload_path):
+        for file in files:
+            if file.endswith(('.png', '.jpg', '.jpeg')):
+                image_list.append(file)
+    
+    return image_list
+
+@app.route('/uploads/<filename>')
+def get_image(filename):
+   
+    upload_path = os.path.join(os.getcwd(), app.config['UPLOAD_FOLDER'])
+    return send_from_directory(upload_path, filename)
+
+@app.route('/files')
+@login_required
+def files():
+    
+    images = get_uploaded_images()
+    return render_template('files.html', images=images)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('You have been logged out','success')
+    return redirect(url_for('home'))
+
 
 # user_loader callback. This callback is used to reload the user object from
 # the user ID stored in the session
